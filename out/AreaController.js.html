@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: AreaController.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: AreaController.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * ==========================================================================
+ * created by cbl-147
+ * @description used for performing an area's related action from admin panel
+ * ==========================================================================
+ */
+var async = require('async');
+var sendResponse = require('../../routes/sendResponse');
+var constant = require('../../routes/constant');
+var func = require('../../routes/commonfunction');
+var consts=require('./../../config/const')
+const lib=require('../../lib/NotificationMgr')
+var _ = require('underscore');
+var something = "Something went wrong";
+var client = require('twilio')("AC4b6d9ecd84afd6db7cf9ac5f055d7784","782e67bf1f26170706acd639d757ae08");
+var moment = require('moment');
+var pushNotifications = require('../../routes/pushNotifications');
+var orderFunction = require('../../routes/orderFunction');
+var AdminMail = "ops@royo.com";
+var crypto = require('crypto')
+    algorithm = consts.SERVER.CYPTO.ALGO,
+    crypto_password =  consts.SERVER.CYPTO.PWD
+var chunk = require('chunk');
+
+/**
+ * @desc used for listing an pincode of areas
+ * @param {*Object} req 
+ * @param {*Object} res 
+ */
+const PinCodeList=async (req,res)=>{
+    try{
+        var created_by=parseInt(req.user.id);
+        var area_id=req.query.area_id;
+        const areaData=await GetAreas(req.dbName,parseInt(area_id));
+        const data=await GetPincodes(req.dbName,area_id);
+        sendResponse.sendSuccessData(data, constant.responseMessage.SUCCESS, res, 200);
+    }
+    catch(err){
+        console.log(err);
+        sendResponse.somethingWentWrongError(res);
+    }
+}
+
+const AddPin=async (req,res)=>{
+    try{
+        logger.debug("==================in start of AddPin=================")
+        var aread_id=parseInt(req.body.area_id);
+        var user_id=parseInt(req.user.id);
+        console.log(req.user)
+        logger.debug("===========in the AddPin=======================")
+        var pincode=req.body.pincode,newPinArray=[];
+        if(pincode &amp;&amp; pincode.length>0){
+            _.each(pincode,function(i){
+                newPinArray.push(i)
+                newPinArray.push(aread_id)
+                newPinArray.push(user_id)
+            })
+        }
+        var finaData=chunk(newPinArray,3);
+        console.log("===pincode==",newPinArray,finaData);
+        // var pinData=_.reduce(pincode,f)/
+        const data=await AddPinCode(finaData);
+        sendResponse.sendSuccessData({}, constant.responseMessage.SUCCESS, res, 200);
+    }
+    catch(err){
+        sendResponse.somethingWentWrongError(res);
+    }
+}
+/**
+ * @description used for deletion an pincode
+ * @param {*Object} req 
+ * @param {*Object} res 
+ */
+const DeletePinCode=async (req,res)=>{
+    try{
+        var pin_id=req.body.id;
+        var user_id=req.user.id;
+        const data=await DeletePin(parseInt(pin_id),parseInt(user_id));
+        sendResponse.sendSuccessData(data, constant.responseMessage.SUCCESS, res, 200);
+    }
+    catch(err){
+        sendResponse.somethingWentWrongError(res);
+    }
+}
+/**
+ * @description used for updating an pincode
+ * @param {*Object} req 
+ * @param {*Object} res 
+ */
+const UpdatePinCode=async (req,res)=>{
+    try{
+        var pin_id=req.body.id;
+        var user_id=req.user.id;
+        var pincode=req.body.pincode;
+        await UpdatePin(pin_id,user_id,pincode)
+        sendResponse.sendSuccessData({},constant.responseMessage,res,200);
+    }
+    catch(err){
+        sendResponse.somethingWentWrongError(res)
+
+    }
+}
+
+
+function UpdatePin(id,user_id,pincode){
+    return new Promise((resolve,reject)=>{
+        var sql="update pincode set `pincode`=? where `id`=?"
+        multiConnection[dbName].query(sql,[pincode,id],function(err,data){
+            if(err){
+                reject(err)
+            }
+            else{
+                resolve()
+            }
+        })
+    })
+}
+
+function DeletePin(id,user_id){
+    return new Promise((resolve,reject)=>{
+        var sql="update pincode set deleted_by=? where id=?"
+        multiConnection[dbName].query(sql,[user_id,id],function(err,data){
+            if(err){
+                reject(err)
+            }
+            else{
+                resolve()
+            }
+        })
+    })
+}
+function GetPincodes(dbName,id){
+    return new Promise((resolve,reject)=>{
+        var pinQuery="select `pincode`.`pincode`,`pincode`.`area_id`,`area`.`name`,`pincode`.`id` from pincode inner join area on area.id=pincode.area_id where area_id=? and deleted_by=? "
+        multiConnection[dbName].query(pinQuery,[id,0],function(err,data){
+                if(err){
+                    reject(err)
+                }
+                else{
+                    resolve(data)
+                }
+        })
+    })
+}
+
+function AddPinCode(pinData){
+    return new Promise((resolve,reject)=>{
+        var addQuery="insert into pincode (`pincode`,`area_id`,`created_by`) values ?"
+        var st=multiConnection[dbName].query(addQuery,[pinData],function(err,data){
+            if(err){
+                    reject(err)
+                }
+                else{
+                    resolve()
+                }
+        })
+    })
+}
+
+function GetAreas(dbName,id){
+    return new Promise((resolve,reject)=>{
+        var sql="select name from area where id=? and is_deleted=?";
+        multiConnection[dbName].query(sql,[id,0],function(err,data){
+            if(err){
+                reject(err)
+            }
+            else{
+                if(data &amp;&amp; data.length>0){
+                    resolve(data[0])
+                }
+                else{
+                    reject(constant.areaMessage.INVALID_AREA)
+                }
+            }
+        })
+    })
+}
+
+
+module.exports={
+    PinCodeList:PinCodeList,
+    AddPin:AddPin,
+    DeletePinCode:DeletePinCode,
+    UpdatePinCode:UpdatePinCode
+}
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#Add">Add</a></li><li><a href="global.html#AddBrandToCat">AddBrandToCat</a></li><li><a href="global.html#addColorPalleteCodes">addColorPalleteCodes</a></li><li><a href="global.html#addDeliveryCompnay">addDeliveryCompnay</a></li><li><a href="global.html#AddItemInOrder">AddItemInOrder</a></li><li><a href="global.html#addLoyalityLevel">addLoyalityLevel</a></li><li><a href="global.html#addTerminologies">addTerminologies</a></li><li><a href="global.html#addTermsAndConditions">addTermsAndConditions</a></li><li><a href="global.html#addUpdateCountryCode">addUpdateCountryCode</a></li><li><a href="global.html#async">async</a></li><li><a href="global.html#blockUnblockDeliveryCompnanies">blockUnblockDeliveryCompnanies</a></li><li><a href="global.html#clientsLocations">clientsLocations</a></li><li><a href="global.html#createNewOrderForRequest">createNewOrderForRequest</a></li><li><a href="global.html#currencyList">currencyList</a></li><li><a href="global.html#Dashboard">Dashboard</a></li><li><a href="global.html#dashboard">dashboard</a></li><li><a href="global.html#DashboardV2">DashboardV2</a></li><li><a href="global.html#Delete">Delete</a></li><li><a href="global.html#deleteCountryCodes">deleteCountryCodes</a></li><li><a href="global.html#deleteLoyalityLevel">deleteLoyalityLevel</a></li><li><a href="global.html#DeletePinCode">DeletePinCode</a></li><li><a href="global.html#deliveryCompanyLogin">deliveryCompanyLogin</a></li><li><a href="global.html#deliveryCompanyProfile">deliveryCompanyProfile</a></li><li><a href="global.html#dhlShipment">dhlShipment</a></li><li><a href="global.html#EnablePGateWay">EnablePGateWay</a></li><li><a href="global.html#findCustomers">findCustomers</a></li><li><a href="global.html#findCustomersById">findCustomersById</a></li><li><a href="global.html#findCustomersByPhoneNumber">findCustomersByPhoneNumber</a></li><li><a href="global.html#findOrdersByCustomerId">findOrdersByCustomerId</a></li><li><a href="global.html#findOrdersByLocationId">findOrdersByLocationId</a></li><li><a href="global.html#findOrdersByPhoneNumber">findOrdersByPhoneNumber</a></li><li><a href="global.html#getCollectorResponse">getCollectorResponse</a></li><li><a href="global.html#getCollectorResponsesBulk">getCollectorResponsesBulk</a></li><li><a href="global.html#getSurvayResponse">getSurvayResponse</a></li><li><a href="global.html#getSurvayResponsesBulk">getSurvayResponsesBulk</a></li><li><a href="global.html#getSurvey">getSurvey</a></li><li><a href="global.html#getSurveyCategories">getSurveyCategories</a></li><li><a href="global.html#getSurveyMonkeyCode">getSurveyMonkeyCode</a></li><li><a href="global.html#getSurveyMonkeyToken">getSurveyMonkeyToken</a></li><li><a href="global.html#getSurveyPage">getSurveyPage</a></li><li><a href="global.html#getSurveyPageQuestion">getSurveyPageQuestion</a></li><li><a href="global.html#getSurveyTemplates">getSurveyTemplates</a></li><li><a href="global.html#importInventory">importInventory</a></li><li><a href="global.html#inventoryAnalytics">inventoryAnalytics</a></li><li><a href="global.html#inventoryAnalyticsByRooms">inventoryAnalyticsByRooms</a></li><li><a href="global.html#inventoryByLocation">inventoryByLocation</a></li><li><a href="global.html#inventoryByRooms">inventoryByRooms</a></li><li><a href="global.html#inventoryByRoomsNonZero">inventoryByRoomsNonZero</a></li><li><a href="global.html#inventoryNonZero">inventoryNonZero</a></li><li><a href="global.html#List">List</a></li><li><a href="global.html#listCountryCodes">listCountryCodes</a></li><li><a href="global.html#listDeliveryCompnanies">listDeliveryCompnanies</a></li><li><a href="global.html#listLoyalityLevel">listLoyalityLevel</a></li><li><a href="global.html#Login">Login</a></li><li><a href="global.html#Logout">Logout</a></li><li><a href="global.html#mysql">mysql</a></li><li><a href="global.html#orderRequest">orderRequest</a></li><li><a href="global.html#orderRequestBySupplier">orderRequestBySupplier</a></li><li><a href="global.html#orderReturnRequest">orderReturnRequest</a></li><li><a href="global.html#orderReturnRequestOfSupplier">orderReturnRequestOfSupplier</a></li><li><a href="global.html#PinCodeList">PinCodeList</a></li><li><a href="global.html#productRatingList">productRatingList</a></li><li><a href="global.html#SaveBrand">SaveBrand</a></li><li><a href="global.html#SaveGift">SaveGift</a></li><li><a href="global.html#shiprocketShipment">shiprocketShipment</a></li><li><a href="global.html#supplierRatingList">supplierRatingList</a></li><li><a href="global.html#trackShipment">trackShipment</a></li><li><a href="global.html#trackShipmentOfShipRocket">trackShipmentOfShipRocket</a></li><li><a href="global.html#Update">Update</a></li><li><a href="global.html#update">update</a></li><li><a href="global.html#updateDeliveryCompnay">updateDeliveryCompnay</a></li><li><a href="global.html#updateLoyalityLevel">updateLoyalityLevel</a></li><li><a href="global.html#UpdatePinCode">UpdatePinCode</a></li><li><a href="global.html#updatePlaceHolders">updatePlaceHolders</a></li><li><a href="global.html#updatePlaceHoldersV1">updatePlaceHoldersV1</a></li><li><a href="global.html#updateSettings">updateSettings</a></li><li><a href="global.html#uploadImage">uploadImage</a></li><li><a href="global.html#variantList">variantList</a></li><li><a href="global.html#verifyDeliveryCompnanies">verifyDeliveryCompnanies</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Wed Jan 13 2021 16:47:33 GMT+0530 (India Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
